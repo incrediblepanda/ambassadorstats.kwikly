@@ -1,0 +1,995 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Ambassador Admin API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Admin authentication
+  - name: ambassadors
+    description: Ambassador management
+  - name: sync
+    description: Sync operations
+  - name: settings
+    description: App settings
+  - name: dashboard
+    description: Public iframe dashboard
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: adminLogin
+      tags: [auth]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: adminLogout
+      tags: [auth]
+      summary: Admin logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getCurrentAdmin
+      tags: [auth]
+      summary: Get current admin user
+      responses:
+        "200":
+          description: Current admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /prospects:
+    get:
+      operationId: listProspects
+      tags: [ambassadors]
+      summary: List all prospect leads
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Prospect list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectListResponse"
+
+  /ambassadors/{id}/prospects:
+    get:
+      operationId: getAmbassadorProspects
+      tags: [ambassadors]
+      summary: Get prospects referred by an ambassador
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Prospect list for ambassador
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectListResponse"
+
+  /ambassadors:
+    get:
+      operationId: listAmbassadors
+      tags: [ambassadors]
+      summary: List all ambassadors (advocates only)
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Ambassador list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AmbassadorListResponse"
+
+  /ambassadors/{id}:
+    get:
+      operationId: getAmbassador
+      tags: [ambassadors]
+      summary: Get ambassador details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Ambassador detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AmbassadorDetailResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ambassadors/{id}/referrals:
+    get:
+      operationId: getAmbassadorReferrals
+      tags: [ambassadors]
+      summary: Get ambassador referrals
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sourceType
+          in: query
+          schema:
+            type: string
+            enum: [PROFESSIONAL, COMPANY]
+      responses:
+        "200":
+          description: Referral list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralListResponse"
+
+  /sync/trigger:
+    post:
+      operationId: triggerSync
+      tags: [sync]
+      summary: Trigger manual sync
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerSyncRequest"
+      responses:
+        "200":
+          description: Sync triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncJobResponse"
+
+  /sync/jobs:
+    get:
+      operationId: listSyncJobs
+      tags: [sync]
+      summary: List sync jobs
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Sync job list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncJobListResponse"
+
+  /sync/jobs/{id}:
+    get:
+      operationId: getSyncJob
+      tags: [sync]
+      summary: Get sync job details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sync job detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncJobResponse"
+
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get app settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update app settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettingsRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+
+  /settings/test-connection:
+    post:
+      operationId: testConnection
+      tags: [settings]
+      summary: Test GetAmbassador connection
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResponse"
+
+  /settings/webhook-info:
+    get:
+      operationId: getWebhookInfo
+      tags: [settings]
+      summary: Get Zapier webhook URL and secret
+      responses:
+        "200":
+          description: Webhook info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookInfoResponse"
+
+  /settings/rotate-webhook-secret:
+    post:
+      operationId: rotateWebhookSecret
+      tags: [settings]
+      summary: Rotate Zapier webhook secret
+      responses:
+        "200":
+          description: New webhook info with rotated secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookInfoResponse"
+
+  /dashboard/{shortCode}:
+    get:
+      operationId: getDashboardData
+      tags: [dashboard]
+      summary: Get public dashboard data
+      parameters:
+        - name: shortCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardDataResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [ambassadors]
+      summary: Get admin dashboard stats
+      responses:
+        "200":
+          description: Admin stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStatsResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        user:
+          $ref: "#/components/schemas/AdminUser"
+      required:
+        - message
+        - user
+
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        role:
+          type: string
+        isActive:
+          type: boolean
+      required:
+        - id
+        - email
+        - role
+        - isActive
+
+    AmbassadorSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        getAmbassadorUid:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        shortCode:
+          type: string
+          nullable: true
+        status:
+          type: string
+        company:
+          type: string
+          nullable: true
+        dashboardAccountCreated:
+          type: boolean
+        iframeUrl:
+          type: string
+          nullable: true
+        lastSyncedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        leadCount:
+          type: integer
+      required:
+        - id
+        - getAmbassadorUid
+        - email
+        - firstName
+        - lastName
+        - shortCode
+        - status
+        - dashboardAccountCreated
+        - createdAt
+        - leadCount
+
+    ProspectSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        shortCode:
+          type: string
+          nullable: true
+        status:
+          type: string
+        company:
+          type: string
+          nullable: true
+        jobTitle:
+          type: string
+          nullable: true
+        referrerAmbassadorId:
+          type: integer
+          nullable: true
+        referrerName:
+          type: string
+          nullable: true
+        referrerEmail:
+          type: string
+          nullable: true
+        enrolledAt:
+          type: string
+          nullable: true
+        approvedAt:
+          type: string
+          nullable: true
+        shiftsCount:
+          type: integer
+          nullable: true
+        totalShifts:
+          type: integer
+          nullable: true
+        journeyStatus:
+          type: string
+          nullable: true
+        lastSyncedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - email
+        - firstName
+        - lastName
+        - status
+        - createdAt
+
+    ProspectListResponse:
+      type: object
+      properties:
+        prospects:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProspectSummary"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - prospects
+        - total
+        - page
+        - limit
+
+    AmbassadorListResponse:
+      type: object
+      properties:
+        ambassadors:
+          type: array
+          items:
+            $ref: "#/components/schemas/AmbassadorSummary"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - ambassadors
+        - total
+        - page
+        - limit
+
+    AmbassadorDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        getAmbassadorUid:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        shortCode:
+          type: string
+          nullable: true
+        status:
+          type: string
+        company:
+          type: string
+          nullable: true
+        dashboardSlug:
+          type: string
+        dashboardToken:
+          type: string
+        iframeUrl:
+          type: string
+        dashboardAccountCreated:
+          type: boolean
+        lastSyncedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        totalReferrals:
+          type: integer
+        professionalReferrals:
+          type: integer
+        companyReferrals:
+          type: integer
+        approvedReferrals:
+          type: integer
+        totalProfessionalShiftsWorked:
+          type: integer
+        totalCompanyShiftsFilled:
+          type: integer
+        leadCount:
+          type: integer
+        countClicks:
+          type: integer
+        countShares:
+          type: integer
+        totalMoneyEarned:
+          type: string
+          nullable: true
+        moneyPaid:
+          type: string
+          nullable: true
+        moneyPending:
+          type: string
+          nullable: true
+        balanceMoney:
+          type: string
+          nullable: true
+        enrolledAt:
+          type: string
+          nullable: true
+      required:
+        - id
+        - getAmbassadorUid
+        - email
+        - firstName
+        - lastName
+        - shortCode
+        - status
+        - dashboardSlug
+        - dashboardToken
+        - iframeUrl
+        - dashboardAccountCreated
+        - createdAt
+        - updatedAt
+        - totalReferrals
+        - professionalReferrals
+        - companyReferrals
+        - approvedReferrals
+        - totalProfessionalShiftsWorked
+        - totalCompanyShiftsFilled
+        - leadCount
+        - countClicks
+        - countShares
+
+    AmbassadorDetailResponse:
+      type: object
+      properties:
+        ambassador:
+          $ref: "#/components/schemas/AmbassadorDetail"
+      required:
+        - ambassador
+
+    Referral:
+      type: object
+      properties:
+        id:
+          type: integer
+        ambassadorId:
+          type: integer
+        sourceType:
+          type: string
+          enum: [PROFESSIONAL, COMPANY]
+        email:
+          type: string
+          nullable: true
+        firstName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+        companyName:
+          type: string
+          nullable: true
+        jobTitle:
+          type: string
+          nullable: true
+        associatedOfficeId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        approvedAt:
+          type: string
+          nullable: true
+        createdAtSource:
+          type: string
+          nullable: true
+        numberShiftsWorked:
+          type: integer
+          nullable: true
+        totalShiftsWorked:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - ambassadorId
+        - sourceType
+        - createdAt
+
+    ReferralListResponse:
+      type: object
+      properties:
+        referrals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Referral"
+        total:
+          type: integer
+      required:
+        - referrals
+        - total
+
+    TriggerSyncRequest:
+      type: object
+      properties:
+        jobType:
+          type: string
+          enum: [FULL, AMBASSADORS_ONLY, REFERRALS_ONLY]
+          default: FULL
+
+    SyncJob:
+      type: object
+      properties:
+        id:
+          type: integer
+        jobType:
+          type: string
+        status:
+          type: string
+        recordsProcessed:
+          type: integer
+        recordsFailed:
+          type: integer
+        errorLog:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+        completedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - jobType
+        - status
+        - recordsProcessed
+        - recordsFailed
+        - startedAt
+        - createdAt
+
+    SyncJobResponse:
+      type: object
+      properties:
+        job:
+          $ref: "#/components/schemas/SyncJob"
+      required:
+        - job
+
+    SyncJobListResponse:
+      type: object
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncJob"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - jobs
+        - total
+        - page
+        - limit
+
+    SettingsResponse:
+      type: object
+      properties:
+        getAmbassadorApiBaseUrl:
+          type: string
+          nullable: true
+        getAmbassadorUsername:
+          type: string
+          nullable: true
+        getAmbassadorApiTokenSet:
+          type: boolean
+        appBaseUrl:
+          type: string
+          nullable: true
+        lastSyncAt:
+          type: string
+          nullable: true
+        syncEnabled:
+          type: boolean
+        connectionStatus:
+          type: string
+          nullable: true
+        envBaseUrlSet:
+          type: boolean
+        envUsernameSet:
+          type: boolean
+        envTokenSet:
+          type: boolean
+      required:
+        - getAmbassadorApiTokenSet
+        - syncEnabled
+        - envBaseUrlSet
+        - envUsernameSet
+        - envTokenSet
+
+    UpdateSettingsRequest:
+      type: object
+      properties:
+        getAmbassadorApiBaseUrl:
+          type: string
+        getAmbassadorUsername:
+          type: string
+        getAmbassadorApiToken:
+          type: string
+        appBaseUrl:
+          type: string
+        syncEnabled:
+          type: boolean
+
+    ConnectionTestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        timestamp:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+      required:
+        - success
+        - message
+
+    WebhookInfoResponse:
+      type: object
+      properties:
+        webhookUrl:
+          type: string
+        secret:
+          type: string
+      required:
+        - webhookUrl
+        - secret
+
+    DashboardDataResponse:
+      type: object
+      properties:
+        ambassador:
+          type: object
+          properties:
+            fullName:
+              type: string
+            shortCode:
+              type: string
+            status:
+              type: string
+            lastSyncedAt:
+              type: string
+              nullable: true
+          required:
+            - fullName
+            - shortCode
+            - status
+        summary:
+          type: object
+          properties:
+            totalReferrals:
+              type: integer
+            professionalReferrals:
+              type: integer
+            companyReferrals:
+              type: integer
+            approvedReferrals:
+              type: integer
+            totalProfessionalShiftsWorked:
+              type: integer
+            totalCompanyShiftsFilled:
+              type: integer
+          required:
+            - totalReferrals
+            - professionalReferrals
+            - companyReferrals
+            - approvedReferrals
+            - totalProfessionalShiftsWorked
+            - totalCompanyShiftsFilled
+        professionalReferrals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Referral"
+        companyReferrals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Referral"
+      required:
+        - ambassador
+        - summary
+        - professionalReferrals
+        - companyReferrals
+
+    AdminStatsResponse:
+      type: object
+      properties:
+        totalAmbassadors:
+          type: integer
+        activeAmbassadors:
+          type: integer
+        totalAdvocates:
+          type: integer
+        totalLeads:
+          type: integer
+        totalReferrals:
+          type: integer
+        lastSyncAt:
+          type: string
+          nullable: true
+        syncHealthy:
+          type: boolean
+        recentJobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncJob"
+      required:
+        - totalAmbassadors
+        - activeAmbassadors
+        - totalAdvocates
+        - totalLeads
+        - totalReferrals
+        - syncHealthy
+        - recentJobs

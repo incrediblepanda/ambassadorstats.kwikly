@@ -1,0 +1,81 @@
+Zap Setup Writeup: HubSpot → Kwikly Webhook
+Overview
+A 3-step automation that monitors HubSpot for contact updates, filters for contacts with referral codes, and POSTs contact data to a Kwikly webhook endpoint.
+
+Current Structure
+Step 1: HubSpot Trigger ✅
+Status: Configured & Tested
+
+Action: Contact Recently Created or Updated (createdorupdatedcrmcontact)
+Auth: Connected to HubSpot Hub: 3381942
+Test Result: ✅ Passed — returns standard HubSpot contact fields (email, firstname, lastname, jobtitle, createdate, etc.)
+Step 2: Filter by Zapier ⚠️
+Status: Configured, Needs Verification
+
+Condition: Stop (skip) if referring_shortcode is empty
+Issue: The field referring_shortcode is not appearing in the HubSpot trigger output
+Filter rule currently references {{356763391__referring_shortcode}} which doesn't exist
+This is likely a custom HubSpot property that needs to be mapped correctly
+Step 3: Webhooks by Zapier POST ⚠️
+Status: Configured, Not Tested, Needs Field Mapping
+
+URL: https://your-kwikly-app.com/webhook (placeholder)
+Payload Type: JSON
+Headers: X-Kwikly-Secret: your-secret-key-here (placeholder)
+Body Fields (8 mapped fields):
+| Body Key | Mapped Field | Status |
+|----------|--------------|--------|
+| email | {{356763391email}} | ✅ Available |
+| firstName | {{356763391firstname}} | ✅ Available |
+| lastName | {{356763391lastname}} | ✅ Available |
+| jobTitle | {{356763391jobtitle}} | ✅ Available |
+| createdAt | {{356763391createdate}} | ✅ Available |
+| referring_shortcode | {{356763391referringshortcode}} | ❌ Not found |
+| shiftsWorked | {{356763391_numbershiftsworked}} | ❌ Not found |
+| approvedAt | {{356763391_approvedat}} | ❌ Not found |
+Outstanding Issues
+Critical: Missing Custom Field Mappings
+Three fields referenced in the webhook payload don't appear in the HubSpot trigger output:
+
+referring_shortcode — Used in both the Filter step and webhook payload
+number_shifts_worked (maps to Kwikly: number_shifts_worked)
+approved_at
+Why this matters: These are likely custom properties in HubSpot that need the correct internal field names (e.g., they might be stored as hs_referring_shortcode, number_of_shifts_worked, or a custom ID like hs_CustomProperty123456789).
+
+Developer Action Items
+1. Verify HubSpot Custom Field Names
+In HubSpot, go to Contacts → Settings → Properties and find the exact internal names for:
+
+Referring/Referral Shortcode
+Number of Shifts Worked
+Approved At
+Provide these exact names (they typically start with hs_ or are custom property IDs).
+
+2. Update Field Mappings
+Once you have the correct internal field names, update:
+
+Filter step (356763392): Replace referring_shortcode with correct field key
+Webhook step (_GEN_1774829291342): Replace all three missing field references
+Example: If the field is hs_referring_shortcode, the mapping becomes {{356763391__hs_referring_shortcode}}
+
+3. Update Webhook Configuration
+Replace placeholder URL: https://your-kwikly-app.com/webhook
+Replace placeholder header: X-Kwikly-Secret: your-secret-key-here
+4. Test End-to-End
+Test Step 3 (webhook) with real/sample data to ensure JSON payload structure is correct
+Verify your backend receives all 8 fields in the expected format
+Zap Deployment Readiness
+ Step 	 Status 	 Blockers 
+ Trigger (HubSpot) 	 ✅ Ready 	 None 
+ Filter 	 ⚠️ Needs Verification 	 3 custom fields need confirmation 
+ Webhook 	 ⚠️ Ready to Test 	 URL & secret are placeholders; fields need verification 
+ Overall 	 ❌ Not Ready 	 Resolve 3 missing field mappings + test webhook 
+Technical Notes for Developer
+Zap ID: 356763391
+Current mode: Draft (not published)
+Step IDs:
+Trigger: 356763391
+Filter: 356763392
+Webhook: _GEN_1774829291342
+Filter logic: Current rule stops execution if referring_shortcode equals empty string (stops the Zap; continue if not empty)
+Webhook payload: Flat JSON structure (no nesting); unflatten: true enabled to handle double-underscore fields if needed

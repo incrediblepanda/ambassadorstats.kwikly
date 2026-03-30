@@ -1,0 +1,41 @@
+CRITICAL CORRECTION NEEDED — the previous agent was wrong about the referrer field.
+
+I personally verified in the GetAmbassador UI: prospect records DO have a REFERRER field. For example, Trisha Steffy (prospect, contact ID 182675105) shows:
+- REFERRER: Katelyn Emenheiser (clickable, linked to the ambassador record)
+- Activity Feed: "Referred by Katelyn Emenheiser" on March 27, 2026
+
+This referrer data IS in the ambassador/all API response — it was just not being parsed correctly. The previous agent dismissed it without fully inspecting the raw payload.
+
+**Your first job before writing any code:**
+1. Query raw_api_payloads for the ambassador/all endpoint. Find a record where status = 'prospect' and print the FULL raw JSON of that record. Look for fields like: `referrer`, `referred_by`, `ambassador`, `ambassador_email`, `referred_by_email`, `referrer_id`, `referrer_name`, `referrer_mbsy_code`, or any nested object. The referrer IS there — find the exact field name.
+2. Also check if there's a `short_code` or `mbsy_code` field on the referrer/ambassador. The short code is stored in GetAmbassador and is how we link a prospect back to their ambassador.
+
+**Once you confirm the exact field name, make the following changes:**
+
+**BACKEND — getambassador.ts:**
+- In `normalizeAmbassador`, extract the referrer info from the prospect record. Store: `referrerEmail` (the referring ambassador's email), `referrerName` (their full name), and `referrerShortCode` if present.
+- The link between a prospect and an advocate is: prospect.referrerEmail === advocate.email (or by short_code match)
+
+**BACKEND — sync-engine.ts:**
+- After syncing all ambassadors/advocates, do a second pass: for each prospect record, look up their referrer email in the ambassadors table to find the matching advocate's ID, and set `referrerAmbassadorId` as a proper FK. Currently this FK is always NULL because the referrer lookup was never implemented. Fix this so it always resolves.
+- This must run on EVERY sync so new prospects automatically get linked to their referrer.
+
+**BACKEND — ambassadors.ts route:**
+- `GET /api/ambassadors` — each advocate should include `leadCount` (count of prospects where referrerAmbassadorId = this ambassador's ID)
+- `GET /api/prospects` — each prospect should include `referrerName`, `referrerEmail`, `referrerShortCode` joined from the linked ambassador record
+- `GET /api/ambassadors/:id/prospects` — return all prospects where referrerAmbassadorId = :id
+
+**FRONTEND — Leads page:**
+- The "Referred By" column must show the actual ambassador name (from the resolved referrerAmbassadorId FK join), not just a raw email string
+- If referrerAmbassadorId is null (referrer not yet resolved), show the raw referrerEmail as a fallback with a warning indicator
+
+**FRONTEND — Ambassador detail page:**
+- The Professional Referrals / Company Referrals table currently shows 0 results because it's reading from the old `referrals` table (commission data) — not from prospects
+- Update it to also show prospects referred by this ambassador (from /api/ambassadors/:id/prospects)
+- The stats cards (Total Referrals, Approved, Professionals, Companies) should count from prospects data where the referrer is this ambassador
+
+**ONGOING DATA FLOW — critical requirement:**
+- Any new prospect that comes in via GetAmbassador sync must automatically: (1) be stored with contactType = 'prospect', (2) have their referrer resolved and FK set, (3) appear in the referring ambassador's lead count and detail page immediately after the next sync
+- The sync should re-resolve ALL referrer FKs on every run (not just new records) in case a new advocate was added after their prospect was first synced
+
+Do not guess at the referrer field name — read the raw JSON first, confirm it, then build everything on top of the confirmed field name.

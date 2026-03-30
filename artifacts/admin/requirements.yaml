@@ -1,0 +1,18 @@
+packages:
+  "framer-motion": "For page transitions, list animations, and smooth layout changes"
+  "recharts": "For beautiful data visualizations on the dashboard"
+  "date-fns": "For formatting timestamps into human-readable dates"
+  "react-hook-form": "For form state management"
+  "@hookform/resolvers": "For Zod schema validation in forms"
+
+images:
+  - path: "artifacts/admin/public/images/login-bg.png"
+    description: "Abstract elegant gradient mesh background in light slate and soft indigo, professional and clean with soft light leaks"
+    aspect_ratio: "16:9"
+  - path: "artifacts/admin/public/images/empty-state.png"
+    description: "Minimal modern 3D illustration of a blank document or folder with soft lighting, suitable for an empty state in a professional admin dashboard"
+    aspect_ratio: "1:1"
+
+notes:
+  - App relies on `@workspace/api-client-react` for all API interactions
+  - Protected routes require the user to be authenticated via `/api/auth/me`

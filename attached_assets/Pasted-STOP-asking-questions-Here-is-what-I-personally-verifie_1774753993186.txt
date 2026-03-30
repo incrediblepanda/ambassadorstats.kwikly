@@ -1,0 +1,51 @@
+STOP asking questions. Here is what I personally verified from GetAmbassador. Do exactly this:
+
+== CONFIRMED FACTS FROM THE GETAMBASSADOR UI ==
+
+1. REFERRAL LINK FORMAT: https://refer.joinkwikly.com/{shareCode}
+   - The column in GA is called "Share Code" (e.g. 7gfqTG, 7g3Lnr, 7g3bST)
+   - The share code is the LAST SEGMENT of the memorable_url field in the API
+   - Example: memorable_url = "https://refer.joinkwikly.com/7g3bST" -> shortCode = "7g3bST"
+
+2. THE REFERRER FIELD EXISTS: In GA's Prospects table, there is a column called "Referred By" showing the ambassador name. The raw_api_payloads table already has all ambassador/all data stored. The field is in the raw JSON -- it may be called `referrer`, `referred_by`, `referrer_email`, or similar.
+
+3. RAW PAYLOAD LOCATION: raw_api_payloads.payload_json -> response -> data -> ambassadors -> array of contact objects. Each contact has: uid (null for all), email, name, status ("enrolled" for advocates, "prospect" for leads), memorable_url (full referral URL or null for prospects), plus many other fields.
+
+== REQUIRED ACTIONS - DO ALL OF THESE, NO QUESTIONS ==
+
+STEP 1: Run this query and print ALL results:
+  SELECT payload_json->'response'->'data'->'ambassadors'->0 as first_record FROM raw_api_payloads WHERE source_endpoint LIKE 'ambassador/all%' LIMIT 1
+Then search that JSON for any field containing a name, email, or ID that could be the referrer. Also check if there's a field like `referrer`, `referred_by`, `referrer_email`, `ambassador_email`, `mbsy_code`.
+
+STEP 2: Also run this to find a prospect specifically:
+  SELECT payload_json->'response'->'data'->'ambassadors' FROM raw_api_payloads WHERE source_endpoint LIKE 'ambassador/all%'
+Loop through the ambassadors array and find the record where email = 'trisha.steffy6995@gmail.com'. Print that entire object.
+
+STEP 3: Based on what you find, FIX getambassador.ts:
+  - shortCode: extract last URL segment from memorable_url (use .split('/').pop()). If memorable_url is null, shortCode = null.
+  - For prospects: extract whatever referrer field exists (from step 1-2) and store as referrerEmail or referrerName
+  - DO NOT generate/fabricate short codes. Only use what's in the API.
+
+STEP 4: FIX sync-engine.ts:
+  - After saving all contacts, do a referrer resolution pass:
+    For each prospect, find the advocate whose email matches the prospect's referrer email (or name match as fallback), and set referrerAmbassadorId FK.
+  - This pass runs on EVERY sync.
+  - Re-sync NOW by calling the sync endpoint after making changes to verify real data flows.
+
+STEP 5: FIX the ambassadors table in the DB:
+  - The ambassadors table currently has shortCode values -- verify they are REAL values from memorable_url, not fabricated. Run:
+    SELECT email, "shortCode", "contactType" FROM ambassadors LIMIT 20
+  - If any shortCodes look wrong (not matching the 6-char format like 7gfqTG), they need to be corrected from the raw payload.
+
+STEP 6: FIX the ambassador detail page:
+  - The Professional Referrals and Company Referrals tables show 0 records.
+  - These must be sourced from prospects where referrerAmbassadorId = this ambassador's DB id.
+  - Update the route GET /api/ambassadors/:id to also return prospects array.
+  - Update the frontend ambassador detail page to show prospects in those tables (not commission data).
+
+STEP 7: After all fixes, trigger a fresh sync and verify:
+  - ambassadors table has correct shortCodes from memorable_url
+  - At least some prospects have non-null referrerAmbassadorId
+  - The ambassador detail page for Jaclyn Abdul-Majid (who has many referrals) shows her prospects in the referrals table
+
+No more questions. No webhook speculation. Just read the real data and fix the code.

@@ -1,0 +1,134 @@
+Update the existing application in-place to do the following:
+
+1. Use the live Ambassador Backend API correctly
+2. Add or finalize the required Replit Secrets support
+3. Improve the sync and admin experience
+4. Refactor the frontend styling so the application matches the look and feel of joinkwikly.com
+
+This is not a rebuild from scratch. Review the current codebase first, understand the existing architecture, then apply the changes below cleanly and carefully.
+
+==================================================
+PART 1: AMBASSADOR BACKEND API — FINAL INTEGRATION RULES
+==================================================
+
+Use the Ambassador Backend API only.
+
+Do not use:
+- the Ambassador JS API
+- browser snippets
+- frontend widget integrations
+- client-side Ambassador embed logic
+
+This app is a server-side admin platform and must use the Backend API only.
+
+Official implementation details:
+- Base URL: https://api.getambassador.com/api/v2
+- Auth method: username and token must be included as URL path segments on every request
+- Full request URL pattern:
+  https://api.getambassador.com/api/v2/{username}/{token}/json/{endpoint}/
+- POST requests must use:
+  Content-Type: application/json
+- TLS 1.2+ is required
+- Standard API rate limits exist
+- No documented IP allowlisting requirement
+- Replit should be able to call the API directly from the server side
+
+Important:
+Do not implement Basic Auth.
+Do not implement Bearer token headers.
+Do not implement custom auth headers unless explicitly required by a specific documented endpoint.
+The default auth pattern for this integration is URL-path-based auth using:
+{username}/{token}/json/
+
+==================================================
+PART 2: REPLIT SECRETS / ENVIRONMENT SETUP
+==================================================
+
+Add support for these Replit Secrets / environment variables:
+- GETAMBASSADOR_API_BASE_URL
+- GETAMBASSADOR_API_USERNAME
+- GETAMBASSADOR_API_TOKEN
+- APP_BASE_URL
+- SESSION_SECRET
+- ADMIN_BOOTSTRAP_EMAIL
+- ADMIN_BOOTSTRAP_PASSWORD
+
+Use them as follows:
+- GETAMBASSADOR_API_BASE_URL = https://api.getambassador.com/api/v2
+- GETAMBASSADOR_API_USERNAME = Ambassador backend API username
+- GETAMBASSADOR_API_TOKEN = Ambassador backend API token
+
+Requirements:
+1. Read all secrets only from environment variables
+2. Never hardcode credentials
+3. Never expose the token in the browser
+4. Add startup validation for required environment variables
+5. If secrets are missing, fail gracefully and log a useful error
+6. Add an admin settings/integrations page that shows:
+   - whether API base URL is configured
+   - whether API username is configured
+   - whether API token is configured
+   - whether APP_BASE_URL is configured
+   - whether the last connection test succeeded
+   - last successful sync timestamp
+7. Never display the raw token in the UI
+
+==================================================
+PART 3: API CLIENT IMPLEMENTATION
+==================================================
+
+Create or refactor a centralized Ambassador API client/service module.
+
+Requirements:
+- All Ambassador API calls must go through one service layer
+- Build URLs using this exact pattern:
+  {GETAMBASSADOR_API_BASE_URL}/{GETAMBASSADOR_API_USERNAME}/{GETAMBASSADOR_API_TOKEN}/json/{endpoint}/
+- Make endpoint handling clean and reusable
+- Keep raw fetch logic separate from normalization logic
+- Add error handling, logging, and response diagnostics
+- Add support for GET and POST as needed
+- POST requests must send Content-Type: application/json
+
+Implement or improve service methods such as:
+- getAllAmbassadors(page?)
+- getAmbassadorByEmailOrUid(...)
+- getAmbassadorStats(...)
+- getCommissions(...)
+- getShortcode(...)
+- normalizeAmbassador(...)
+- normalizeReferral(...)
+
+Also add a simple server-side connection test method that:
+- makes a safe request to the Ambassador Backend API
+- logs the final request URL pattern used, without exposing the raw token in logs
+- logs HTTP status
+- logs a short response snippet for debugging
+- clearly helps diagnose:
+  - bad base URL
+  - bad auth path construction
+  - invalid credentials
+  - endpoint mapping problems
+
+Do not implement auth via headers unless explicitly required by a documented endpoint.
+
+==================================================
+PART 4: SYNC ARCHITECTURE
+==================================================
+
+The app should use Ambassador as the source of truth.
+
+Business rules:
+- HubSpot is upstream only
+- This app should not query HubSpot for dashboard rendering
+- The admin platform reads from Ambassador and stores normalized records internally
+- This remains an admin-only platform
+- Ambassadors do not log into this platform
+
+Sync requirements:
+1. Replace mock Ambassador reads with real server-side API calls where possible
+2. Keep mock fallback only where response mapping is still unresolved
+3. Store raw API payloads for debugging
+4. Make sync idempotent
+5. Prevent duplicate ambassador creation
+6. Prevent duplicate referral creation
+7. Upsert ambassadors using the best

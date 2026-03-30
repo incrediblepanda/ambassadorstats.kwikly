@@ -1,0 +1,56 @@
+Update the app to support live Ambassador Backend API syncing.
+
+Important:
+This app must use server-side requests to the Ambassador Backend API.
+Do not use browser snippets, frontend widget integrations, or client-side Ambassador embed logic as the data integration layer.
+
+Secrets / environment configuration:
+Add support for the following Replit Secrets and use them in the app:
+- GETAMBASSADOR_API_BASE_URL
+- GETAMBASSADOR_API_USERNAME
+- GETAMBASSADOR_API_TOKEN
+- APP_BASE_URL
+- SESSION_SECRET
+- ADMIN_BOOTSTRAP_EMAIL
+- ADMIN_BOOTSTRAP_PASSWORD
+
+Requirements:
+1. Read all Ambassador API credentials only from environment variables
+2. Do not hardcode credentials anywhere
+3. Add startup validation for required environment variables
+4. Add a settings/integrations page that shows:
+   - whether API base URL is configured
+   - whether API username is configured
+   - whether API token is configured
+   - whether the connection test succeeds
+   - last successful sync timestamp
+5. Add a “Test Connection” action for the Ambassador Backend API
+6. Add clear error messages when secrets are missing or invalid
+
+Live integration tasks:
+1. Replace mock Ambassador reads with real server-side API calls where possible
+2. Build a centralized Ambassador API client/service
+3. Add proper request error handling and logging
+4. Keep normalization logic separate from fetch logic
+5. Store raw API payloads for debugging
+6. Make sync safe to rerun without duplicate records
+7. Upsert ambassadors using the best durable unique Ambassador identifier
+8. Upsert referrals using the best available unique source identifier
+9. Auto-create synced ambassador dashboard records for newly discovered ambassadors
+10. Generate and persist:
+   - dashboard slug
+   - dashboard token
+   - iframe URL
+
+Admin requirements:
+- admins must be able to log in
+- admins must be able to view synced ambassadors
+- admins must be able to see the iframe link for each ambassador
+- admins must be able to copy the iframe link
+- admins must be able to run a manual sync
+- admins must be able to see sync status and recent errors
+
+Preserve:
+- admin-only platform design
+- no ambassador login
+- public iframe dashboard route secured by short code + token

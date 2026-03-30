@@ -1,0 +1,82 @@
+Update the frontend styling so the app matches the look and feel of joinkwikly.com.
+
+Design objective:
+This internal admin platform and the public iframe dashboards should feel visually aligned with the Kwikly brand and website experience. Do not use a generic default dashboard style. The UI should feel like a natural extension of joinkwikly.com.
+
+Styling direction:
+- Match the visual tone, spacing, and polish of joinkwikly.com
+- Use a clean, modern healthcare-tech / staffing-tech aesthetic
+- Keep the UI professional, crisp, and conversion-friendly
+- Favor a polished marketing-site-meets-operations-tool feel
+- The interface should feel branded, light, modern, and trustworthy
+- Avoid dark heavy enterprise styling unless clearly supported by the site
+- Avoid overly boxy, clunky, or template-looking admin UI patterns
+
+Frontend requirements:
+1. Review joinkwikly.com and update the app’s design system to align with it
+2. Match as closely as possible:
+   - color palette
+   - typography feel
+   - button styling
+   - border radius
+   - card styling
+   - spacing rhythm
+   - form styling
+   - table styling
+   - badge/status styling
+   - hover states
+   - empty states
+3. Create a reusable design system layer for:
+   - colors
+   - font scale
+   - spacing
+   - border radius
+   - shadows
+   - buttons
+   - inputs
+   - cards
+   - tables
+   - badges
+4. Use Tailwind in a structured way rather than scattered one-off styling
+5. Make the UI feel intentional and branded, not like a starter kit
+
+Admin platform visual goals:
+- clean top-level dashboard cards
+- polished ambassador list table
+- clean filters/search controls
+- subtle, modern shadows
+- soft borders
+- strong readability
+- clear hierarchy
+- minimal visual clutter
+
+Iframe dashboard visual goals:
+- very clean and lightweight
+- minimal chrome
+- optimized for embedding
+- should look like a branded dashboard module that fits naturally inside GetAmbassador
+- summary cards should be compact and polished
+- tables should be easy to scan
+- spacing should be tight but not cramped
+
+Component styling priorities:
+- buttons should reflect Kwikly’s brand feel
+- cards should feel modern and soft, not harsh
+- tables should be visually clean and usable
+- status badges should feel polished and easy to interpret
+- forms/settings pages should look clean and premium
+- login page should feel on-brand and not generic
+
+Implementation requirements:
+- create centralized theme tokens or constants
+- refactor repeated styling into reusable components
+- update layout, navbar, sidebar, cards, forms, tables, and badges
+- improve consistency across all pages
+- keep accessibility and contrast in mind
+- do not overdesign; keep it practical and clean
+
+Important:
+- Do not just “make it prettier”
+- Make it feel specifically aligned to joinkwikly.com
+- Preserve usability for internal admin workflows
+- Keep the interface fast, clean, and operationally useful

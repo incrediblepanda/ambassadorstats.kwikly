@@ -1,0 +1,335 @@
+Update the existing app in two major areas at once:
+
+1. Connect the app to the live Ambassador Backend API using Replit Secrets
+2. Refactor and improve the frontend styling so it matches the look and feel of joinkwikly.com
+
+This is an in-place upgrade of the existing application, not a rebuild from scratch. Review the current codebase first, identify the current architecture, and then apply the changes below cleanly.
+
+==================================================
+PART 1: LIVE AMBASSADOR BACKEND API INTEGRATION
+==================================================
+
+Important integration rules:
+- Use the Ambassador Backend API only
+- Do not use browser snippets, frontend widget integrations, or client-side Ambassador embed logic as the data integration layer
+- All Ambassador data syncing must happen server-side
+- Read credentials only from Replit Secrets / environment variables
+- Never hardcode credentials anywhere in code
+- Never expose the API token to the browser
+
+Add support for these environment variables / Replit Secrets:
+- GETAMBASSADOR_API_BASE_URL
+- GETAMBASSADOR_API_USERNAME
+- GETAMBASSADOR_API_TOKEN
+- APP_BASE_URL
+- SESSION_SECRET
+- ADMIN_BOOTSTRAP_EMAIL
+- ADMIN_BOOTSTRAP_PASSWORD
+
+Requirements for environment configuration:
+1. Add startup validation for required environment variables
+2. If any required secret is missing, fail gracefully with a clear message in logs
+3. Add a settings/integrations page in the admin UI that shows:
+   - whether GETAMBASSADOR_API_BASE_URL is configured
+   - whether GETAMBASSADOR_API_USERNAME is configured
+   - whether GETAMBASSADOR_API_TOKEN is configured
+   - whether APP_BASE_URL is configured
+   - whether the last Ambassador API connection test succeeded
+   - last successful sync timestamp
+4. Add a “Test Connection” action that makes a safe server-side request to the Ambassador Backend API and reports success/failure in the admin UI
+5. Never display the raw API token in the UI
+
+Build a clean Ambassador API client/service layer:
+- Centralize all Ambassador API calls in one service module
+- Add proper request handling, error handling, and logging
+- Keep raw fetch logic separate from normalization logic
+- Make this service easy to extend later
+
+Create or improve service methods such as:
+- getAllAmbassadors(page?)
+- getAmbassadorByEmailOrUid(...)
+- getAmbassadorStats(...)
+- getCommissions(...)
+- getShortcode(...)
+- normalizeAmbassador(...)
+- normalizeReferral(...)
+
+Sync requirements:
+- Replace mock Ambassador reads with real server-side API calls where possible
+- Keep mock fallback only where the live response mapping is still unresolved
+- Add raw API payload capture/storage for debugging
+- Make sync idempotent
+- Prevent duplicate ambassador creation
+- Prevent duplicate referral creation
+- Upsert ambassadors using the best durable unique Ambassador identifier
+- Upsert referrals using the best available unique source identifier
+- Store sync timestamps, sync outcomes, and errors
+- Make manual sync safe to rerun
+
+Auto-create synced ambassador dashboard records:
+When a new ambassador is discovered during sync:
+- automatically create their synced ambassador record in the internal database
+- automatically generate:
+  - dashboard slug
+  - secure dashboard token
+  - iframe URL
+- persist all of those values
+- mark dashboardAccountCreated = true
+- surface this clearly in the admin UI
+
+Preserve current business rules:
+- Ambassador is the source of truth
+- HubSpot is upstream only and should not be queried directly by this app for dashboard rendering
+- Admin-only platform
+- No ambassador login
+- Public iframe dashboard route is secured by short code + token
+- Short code alone is never enough for access
+
+Add or improve admin functionality:
+- Admin can log in
+- Admin can view all synced ambassadors
+- Admin can search ambassadors by name, email, or short code
+- Admin can filter ambassadors by status
+- Admin can open ambassador details
+- Admin can see the iframe link for each ambassador
+- Admin can copy the iframe link
+- Admin can trigger manual sync
+- Admin can see sync status and recent sync errors
+- Admin can view a usable sync jobs page
+- Admin can view settings/integrations status
+
+Add or improve these admin pages:
+1. Admin dashboard
+- total ambassadors
+- total active ambassadors
+- total referrals synced
+- last sync run
+- sync health summary
+
+2. Ambassadors list page
+- search
+- filters
+- sortable columns
+- copy iframe URL action
+- status indicators
+- view details action
+
+3. Ambassador detail page
+- ambassador profile info
+- short code
+- Ambassador UID
+- dashboard slug
+- dashboard token status
+- full iframe URL
+- last sync timestamp
+- summary referral metrics
+- recent synced referral records
+- sync/debug information
+
+4. Sync jobs page
+- last sync time
+- sync duration
+- records processed
+- records failed
+- latest errors
+
+5. Settings / Integrations page
+- config status
+- connection test
+- sync status
+- health indicators
+
+Maintain or improve the public iframe dashboard:
+Route format:
+- /dashboard/:shortCode?token=...
+
+Requirements:
+- validate short code + token on every request
+- return unauthorized if invalid
+- be iframe-friendly
+- show only that ambassador’s data
+- no unnecessary admin chrome on this route
+
+Business mapping configuration:
+Create or preserve a dedicated config file that maps Ambassador custom fields into business meanings:
+- custom1 = companyName
+- custom2 = totalShiftsWorked
+- custom3 = phoneNumber
+- custom4 = approvedAt
+- custom5 = numberShiftsWorked
+- custom6 = jobTitleOrReferralType
+- custom9 = fvidOrDashboardId
+- custom10 = associatedOfficeId
+
+Classification logic:
+Keep this in a dedicated helper, not in route handlers:
+- PROFESSIONAL when the record reflects professional/job-title-based referral logic such as dental hygienist or dental assistant, or when job title exists and office identifiers are absent
+- COMPANY when companyName and/or associatedOfficeId and/or totalShiftsWorked is present
+
+Data/storage architecture:
+- Keep the current Replit database usage if already implemented
+- Improve the data access layer so storage operations are abstracted behind repository/service functions
+- Avoid direct DB calls scattered across route handlers
+- Keep the structure maintainable and easy to migrate later if needed
+
+Security requirements:
+- Review admin authentication flow
+- Review session handling
+- Ensure password hashing is implemented correctly
+- Ensure protected routes are consistently protected
+- Ensure iframe dashboard access depends on token validation and not short code alone
+- Remove insecure shortcuts if present
+
+==================================================
+PART 2: FRONTEND STYLING / BRAND ALIGNMENT
+==================================================
+
+Refactor the frontend styling so the app matches the look and feel of joinkwikly.com.
+
+Design objective:
+The internal admin platform and the public iframe dashboards should feel visually aligned with joinkwikly.com and the Kwikly brand. The current app should not look like a generic starter template or default dashboard. It should feel like a branded extension of the Kwikly product and website.
+
+Use joinkwikly.com as the visual reference point for the design language.
+
+Styling direction:
+- Match the visual tone, polish, spacing, and overall feel of joinkwikly.com
+- Use a clean, modern healthcare-tech / staffing-tech aesthetic
+- Keep the interface light, modern, trustworthy, and crisp
+- Avoid heavy dark enterprise styling unless the brand clearly supports it
+- Avoid clunky admin-template visuals
+- Keep the UI practical and operationally useful, not overdesigned
+
+Review joinkwikly.com and align the app as closely as possible on:
+- color palette
+- typography feel
+- button styling
+- border radius
+- shadows
+- spacing rhythm
+- card styling
+- input styling
+- form layouts
+- tables
+- badges / status pills
+- hover states
+- empty states
+- loading states
+
+Create or improve a reusable design system layer for:
+- colors
+- typography scale
+- spacing scale
+- border radius
+- shadows
+- buttons
+- inputs
+- cards
+- tables
+- badges
+- page containers
+- section headers
+
+Implementation requirements:
+- Use Tailwind in a structured way
+- Refactor repeated styles into reusable components
+- Avoid scattered one-off styling where possible
+- Improve consistency across all pages
+- Keep accessibility and contrast in mind
+
+Admin platform visual goals:
+- polished top-level metric cards
+- modern, soft card treatment
+- clean table design
+- strong readability
+- subtle borders and shadows
+- clean filters and search controls
+- consistent spacing
+- minimal clutter
+- premium but practical internal tool feel
+
+Iframe dashboard visual goals:
+- lightweight and clean
+- optimized for embedding
+- minimal chrome
+- compact but polished KPI cards
+- easy-to-scan tables
+- should feel like a branded dashboard module that fits naturally inside GetAmbassador
+
+Apply the styling improvements consistently across:
+- login page
+- admin dashboard
+- ambassadors list
+- ambassador detail page
+- sync jobs page
+- settings/integrations page
+- public iframe dashboard
+- shared layout components
+- sidebar / nav / header
+- forms
+- modals / dialogs if present
+- tables
+- badges
+
+Refinement priorities:
+- better typography hierarchy
+- more intentional spacing and page rhythm
+- stronger button styling aligned to the brand
+- softer and cleaner cards
+- cleaner tables and controls
+- more cohesive brand color usage
+- better visual hierarchy for status indicators and metrics
+- improved empty/loading/error states
+- more premium, less generic overall feel
+
+Important styling constraint:
+Do not just “make it prettier.”
+Make it feel specifically aligned to joinkwikly.com while preserving usability for admin workflows.
+
+==================================================
+PART 3: CODE QUALITY / DELIVERY APPROACH
+==================================================
+
+Before making changes:
+1. Inspect the current codebase
+2. Produce a short implementation plan grouped into:
+   - architecture issues
+   - integration/data issues
+   - UI/styling issues
+   - auth/security issues
+   - sync issues
+3. Then execute the plan
+
+During execution:
+- preserve a working app throughout
+- do not unnecessarily break existing routes
+- improve code quality while implementing these changes
+- remove dead code
+- reduce duplication
+- improve naming consistency
+- improve reusable components and utilities
+- add comments where business logic is important
+
+Deliverables:
+1. Updated Ambassador Backend API integration using Replit Secrets
+2. Settings/integrations page with config status + connection test
+3. Working live sync structure with improved logging and idempotent behavior
+4. Auto-created ambassador dashboard records on sync
+5. Improved admin pages and usability
+6. Refined public iframe dashboard
+7. Frontend restyled to match joinkwikly.com
+8. Cleaned-up reusable design system/components
+9. Updated README with:
+   - required Replit Secrets
+   - how to configure Ambassador API credentials
+   - how connection testing works
+   - how sync works
+   - how ambassador records are auto-created
+   - how iframe URLs are generated
+   - how dashboard token validation works
+
+Important:
+- This remains an admin-only platform plus public tokenized iframe dashboard views
+- Do not add ambassador login
+- Use Ambassador Backend API with server-side authenticated requests
+- Do not rely on frontend/browser Ambassador integrations
+- Build this as a maintainable internal operations product, not a toy demo

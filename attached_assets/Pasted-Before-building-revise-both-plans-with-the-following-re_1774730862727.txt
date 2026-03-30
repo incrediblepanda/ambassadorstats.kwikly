@@ -1,0 +1,63 @@
+Before building, revise both plans with the following required corrections. Do not start building until the plans reflect ALL of these changes.
+
+CORRECTIONS TO PLAN #2 (Fix API Endpoints, Sync Engine & Data Refresh):
+
+1. TASK 5 MUST BE CODE, NOT MANUAL: The plan currently says "This step is a manual operation after deploying the fix, not automated code." This is unacceptable. You MUST write code that executes the DB cleanup and triggers a real sync automatically as part of the startup sequence or as a one-time migration. Specifically: add a startup migration step in startup.ts that checks if the ambassadors table contains only seeded fake data (detect by checking if any get_ambassador_uid starts with 'amb-0' or if raw_api_payloads has 0 rows) and if so, deletes all rows from referrals, ambassadors, and raw_api_payloads, then triggers a full sync immediately. This must run as code, not be left for manual execution.
+
+2. ADD FIELD MAPPING FOR CUSTOM FIELDS: The sync engine must map GetAmbassador custom fields from prospect/referral records into the correct DB columns when upserting into the referrals table. The required mapping is:
+- custom1 = companyName
+- custom2 = totalShiftsWorked (integer)
+- custom3 = phoneNumber
+- custom4 = approvedAt (date string)
+- custom5 = numberShiftsWorked (integer)
+- custom6 = jobTitleOrReferralType
+- custom9 = fvidOrDashboardId
+- custom10 = associatedOfficeId
+Classification rule: if custom1 OR custom10 OR custom2 is present/non-empty = COMPANY type. Otherwise = PROFESSIONAL type. This mapping logic must be in the sync engine or referral-classifier service.
+
+3. ADD RAW PAYLOAD STORAGE: Every paginated API response from GetAmbassador (ambassador/all pages, commission pages) must be stored as a row in the raw_api_payloads table with: endpoint name, page number, full JSON response body, and timestamp. This is required for debugging and audit.
+
+4. IFRAME_URL REGENERATION: After setting appBaseUrl from REPLIT_DOMAINS, the startup code must regenerate and update iframe_url for any ambassador record where iframe_url is null, empty, or still contains the old dev URL pattern (worf.replit.dev). The correct format is: {appBaseUrl}/dashboard/{short_code}?token={dashboard_token}
+
+5. SYNC STATUS FIX MUST BE IN BOTH BACKEND AND FRONTEND: The plan only fixes syncHealthy in the ambassadors.ts route. Make sure the fix is: a job with status=COMPLETED but records_processed=0 AND non-empty error_log is treated as FAILED in both the DB write (sync-engine.ts should write status=FAILED not COMPLETED in this case) and in any frontend display logic. Fix the status at the source in sync-engine.ts so it writes the correct status to the DB, not just masked in the UI.
+
+CORRECTIONS TO PLAN #3 (Public Dashboard Page & Sync Health UI):
+
+1. SPECIFY EXACT TABLE COLUMNS FOR THE DASHBOARD PAGE: The plan just says "referral table split into Professionals and Companies tabs" without specifying the exact columns. The columns must be exactly:
+
+Professional Referrals table columns (in order):
+- First Name
+- Last Name
+- Email
+- Job Title (from custom6)
+- Status (approved/pending)
+- Shifts Worked (numberShiftsWorked, from custom5)
+- Created At
+- Approved At (from custom4)
+
+Company Referrals table columns (in order):
+- Company Name (from custom1)
+- First Name
+- Last Name
+- Email
+- Status (approved/pending)
+- Total Shifts Worked (totalShiftsWorked, from custom2)
+- Office ID (associatedOfficeId, from custom10)
+- Created At
+- Approved At (from custom4)
+
+2. AMBASSADOR HEADER ON DASHBOARD PAGE: The public dashboard page must show the ambassador's full name and status prominently at the top before any KPI cards. Format: large name, small status badge (active/inactive).
+
+3. KPI CARDS ON DASHBOARD PAGE: The 6 KPI cards must be exactly:
+- Total Referrals (count of all referrals for this ambassador)
+- Approved (count where status = approved)
+- Professionals (count where type = PROFESSIONAL)
+- Companies (count where type = COMPANY)
+- Prof. Shifts Worked (sum of numberShiftsWorked across all PROFESSIONAL referrals)
+- Company Shifts Worked (sum of totalShiftsWorked across all COMPANY referrals)
+
+4. SYNC HEALTH: When the last sync job has status=COMPLETED but records_processed=0 AND error_log is non-empty, the Integration Health card on the admin dashboard must show a RED/warning state with message 'Sync errors detected' - not green Healthy and not neutral. Only show green Healthy when the last sync completed with records_processed > 0 OR records_processed = 0 AND error_log is null/empty (meaning no changes needed, all up to date). Show neutral grey only when no sync has ever run (lastSyncAt is null).
+
+5. PLAN #3 OUT OF SCOPE IS WRONG: Plan #3 says 'Any backend route changes are out of scope.' But fixing the backend syncHealthy computation IS required as part of making the admin dashboard accurate. Plan #2 already includes the backend syncHealthy fix in ambassadors.ts, so make sure Plan #3's frontend dashboard.tsx reads that fixed backend value correctly and does not try to recompute it on the frontend.
+
+After revising both plans with all of the above, show me the updated plans before building.

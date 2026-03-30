@@ -1,0 +1,66 @@
+I have directly inspected the database. Here are the confirmed facts — act on them exactly:
+
+== CONFIRMED DB STATE ==
+The ambassadors table uses snake_case columns: id, email, first_name, last_name, short_code, status, referrer_email, referrer_ambassador_id, contact_type
+
+Query result: SELECT email, referrer_email, referrer_ambassador_id, short_code FROM ambassadors WHERE status = 'prospect'
+-> Returns 0 rows where referrer_email IS NOT NULL
+-> referrer_email is NULL for ALL prospects
+-> referrer_ambassador_id is NULL for ALL prospects
+-> The sync is not writing the referrer data at all
+
+Query result: SELECT email, short_code FROM ambassadors WHERE status = 'prospect'
+-> short_code is also NULL for prospects (correct, they don't get referral links)
+
+== CONFIRMED GA DATA (from UI screenshots) ==
+GA Contacts > Advocates tab columns: Email | Name | UID (N/A) | Date Created | Referred By
+GA Contacts > Prospects tab columns: Email | Name | UID (N/A) | Date Created | Referred By
+
+Known referrer relationships:
+- trisha.steffy6995@gmail.com (Trisha Steffy, prospect) -> Referred By: Katelyn Emenheiser
+- Katelyn Emenheiser's email = kaw14@pct.edu (confirmed from Referral Links table)
+- maddie_liz@hotmail.com, chelseaedgell18@gmail.com, ballesteros900@gmail.com, kellylack1013@gmail.com, melissa.bean.rdh@gmail.com -> all Referred By: Sanela Ovnovic (ovnovic.sanela@gmail.com)
+- oliviaruns02@gmail.com (Olivia Keener), armosher2@aol.com (Alyssa Webber) -> Referred By: Jaclyn Abdul-Majid (jaclynhenryldh@gmail.com)
+
+GA Referral Links table (advocates with referral links):
+- keely@joinkwikly.com -> short_code: 7gfqTG
+- justin@joinkwikly.com -> short_code: 7gfqSN  
+- ovnovic.sanela@gmail.com -> short_code: 7g3Lnr
+- kaw14@pct.edu -> short_code: 7g3bST
+- caylavancerdh@gmail.com -> short_code: 7g3bSr
+- dinisheamiller@gmail.com -> short_code: 7g3bSn
+- lyddiammm@gmail.com -> short_code: 7g3bSb
+- hilma.mededovic@getambassador.com -> short_code: 7g3bRJ
+- jaclynhenryldh@gmail.com -> short_code: 7g3bRG
+- pouria@joinkwikly.com -> short_code: 7fZ7BW
+
+== ROOT CAUSE ==
+The getambassador.ts normalizeAmbassador function is not correctly reading the referrer field from the raw JSON. The GA API ambassador/all endpoint returns a `referrer` field (or similar) on prospect records that contains either a name or email of the referring advocate. This is NOT being parsed and stored to referrer_email during sync.
+
+== WHAT YOU MUST DO ==
+
+STEP 1: Read the raw JSON for Trisha Steffy's record from the stored payload:
+  In getambassador.ts or sync-engine.ts, add a temporary console.log that prints the full raw API record for email = 'trisha.steffy6995@gmail.com'. Restart the server, trigger a sync, and read the server logs to find the exact field name for the referrer.
+
+STEP 2: Once you see the raw JSON field name, update normalizeAmbassador in getambassador.ts to:
+  - Extract referrerEmail from that field (it may be a nested object like record.referrer?.email or a flat field like record.referrer_email or record.referred_by)
+  - Extract short_code: for advocates = memorable_url.split('/').pop(), for prospects = null
+  - The Drizzle schema column is referrer_email (snake_case in DB)
+
+STEP 3: Update sync-engine.ts referrer resolution:
+  The current code looks for advocates by referrerEmail match. That ONLY works if referrerEmail was stored. Since it's null, nothing resolves. Fix the normalizeAmbassador function in step 2 first, then run a full sync.
+
+STEP 4: After the sync, verify with these SQL queries:
+  SELECT email, referrer_email, referrer_ambassador_id FROM ambassadors WHERE status = 'prospect' AND referrer_email IS NOT NULL
+  -> Should return rows with real email values
+  
+  SELECT a.email as prospect, b.email as referrer FROM ambassadors a JOIN ambassadors b ON a.referrer_ambassador_id = b.id WHERE a.status = 'prospect'
+  -> Should show the prospect-to-advocate relationships
+
+STEP 5: Verify advocates page shows lead counts:
+  SELECT email, (SELECT count(*) FROM ambassadors p WHERE p.referrer_ambassador_id = a.id) as lead_count FROM ambassadors a WHERE status = 'enrolled'
+  -> Jaclyn Abdul-Majid (jaclynhenryldh@gmail.com) should show at least 2 leads
+  -> Sanela Ovnovic (ovnovic.sanela@gmail.com) should show at least 5 leads
+  -> Katelyn Emenheiser (kaw14@pct.edu) should show at least 1 lead (Trisha Steffy)
+
+Do step 1 first — log and read the raw JSON — then proceed. Do not assume the field name.

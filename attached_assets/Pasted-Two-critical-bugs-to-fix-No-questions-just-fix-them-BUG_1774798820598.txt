@@ -1,0 +1,44 @@
+Two critical bugs to fix. No questions, just fix them.
+
+== BUG 1: SHORT CODES ARE WRONG ==
+
+The app is showing fabricated short codes like 172397363 for Jaclyn Abdul-Majid.
+The REAL short code from GetAmbassador is 7g3bRG (from the Referral Links page: https://refer.joinkwikly.com/7g3bRG).
+
+The short_code column in the ambassadors table is storing GA's internal numeric contact/prospect ID instead of the actual alphanumeric share code from the memorable_url field.
+
+Full confirmed mapping from GA Referral Links page:
+- jaclynhenryldh@gmail.com -> 7g3bRG
+- ovnovic.sanela@gmail.com -> 7g3Lnr
+- kaw14@pct.edu -> 7g3bST
+- keely@joinkwikly.com -> 7gfqTG
+- justin@joinkwikly.com -> 7gfqSN
+- caylavancerdh@gmail.com -> 7g3bSr
+- dinisheamiller@gmail.com -> 7g3bSn
+- lyddiammm@gmail.com -> 7g3bSb
+- hilma.mededovic@getambassador.com -> 7g3bRJ
+- pouria@joinkwikly.com -> 7fZ7BW
+
+Fix: In normalizeAmbassador in getambassador.ts, the short_code must be extracted from the memorable_url field using memorable_url?.split('/').pop() ?? null. This will give the 6-char alphanumeric code. Do NOT use any numeric ID field as the short code. Run a full sync after fixing so all ambassador records get their correct short codes.
+
+== BUG 2: REFERRED LEADS TABLE IS EMPTY DESPITE CORRECT LEAD COUNT ==
+
+The Ambassadors page shows correct lead counts from unique_referrals (Jaclyn=89, Sanela=6, Katelyn=1). But on Jaclyn's detail page, the "Referred Leads" table shows "No referred leads found" and referrer_ambassador_id is NULL for all prospects in the DB.
+
+This is because the sync never populates referrer_ambassador_id on prospect records. The referrer_ambassador_id FK is the bridge between the lead count (from GA API) and the actual displayed leads.
+
+Here is what the GA API actually provides: The ambassador/all endpoint returns ALL contacts including prospects. Each prospect record has a `referrer` field in the raw JSON payload that contains the referring advocate's information (either their email, name, or a nested object). We need to find and use this field.
+
+Fix required:
+1. Open getambassador.ts and read the normalizeAmbassador function. Find where it handles the raw record for prospects.
+2. Add a console.log: if (raw.status === 'prospect') console.log('PROSPECT RAW:', JSON.stringify(raw));
+3. Restart the server and trigger a sync via the admin UI or API endpoint.
+4. Read the server/console logs and find the actual field name for the referrer on prospect records.
+5. Update normalizeAmbassador to extract referrer_email from that field.
+6. Update the sync-engine.ts resolveReferrerLinks function to match prospects to advocates by email and write referrer_ambassador_id.
+7. Run a full sync.
+8. Verify: SELECT email, referrer_email, referrer_ambassador_id FROM ambassadors WHERE status = 'prospect' AND referrer_ambassador_id IS NOT NULL LIMIT 10
+   -> Must return real rows, not empty.
+9. Verify Jaclyn's detail page now shows actual prospect names in the Referred Leads table.
+
+Do Bug 1 first (short codes), then Bug 2 (referred leads table). Both need a full sync after fixing.

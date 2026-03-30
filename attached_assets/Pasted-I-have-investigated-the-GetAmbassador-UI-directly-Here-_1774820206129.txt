@@ -1,0 +1,85 @@
+I have investigated the GetAmbassador UI directly. Here is exactly what the GA API returns on every prospect contact record and what needs to change. Execute all of this now.
+
+---
+
+WHAT I CONFIRMED IN THE GA CONTACTS UI:
+
+Every prospect record has these NATIVE fields returned by the GA API:
+- first_name
+- last_name
+- email
+- created_at (labeled "JOINED" in the UI, e.g. 03/29/2026)
+- referrer (labeled "REFERRER" in the UI — this is a NAMED field with the referring ambassador's full name and their GA contact ID as a hyperlink, e.g. "Jaclyn Abdul-Majid" linking to /contacts/182148465)
+- source (e.g. "Ambassador Creation")
+- status ("prospect" vs "ambassador")
+- uid, company, phone, etc.
+
+The Activity Feed also shows "Referred by [Name]" as an event.
+
+There is also a "Custom Journeys" section with "Professionals User Journey" which has steps: Unqualified Ineligible, Approved, Active, Disengaged, Declined Service, Unqualified Eligible, Onboarding. Every prospect currently shows "Onboarding" as their journey step.
+
+The custom fields custom1–custom10 are confirmed EMPTY on all contact records. They exist as field slot definitions but have no data.
+
+---
+
+CRITICAL FINDING: The GA API DOES return the referrer as a native field on every contact. It is NOT in custom8. The sync engine is NOT reading this field. This is why "Referred By" shows blank for all 99 prospects.
+
+---
+
+CHANGE 1 — FIX THE REFERRER FIELD IN THE SYNC ENGINE (MOST IMPORTANT)
+
+Read the raw GA API response for a contact record right now by fetching one prospect. Look at the actual JSON structure returned. Find the field that corresponds to the REFERRER shown in the UI. It is likely named something like: referrer, referrer_id, referrer_uid, referred_by, or similar.
+
+Once you identify the exact field name in the JSON, update normalizeAmbassador() and the sync upsert to:
+1. Read the referrer name from that field and store it in a new column: referrer_name TEXT (add this column if it doesn't exist)
+2. Read the referrer's GA contact ID/uid from that field and use it to look up the matching ambassador in the ambassadors table and write referrer_ambassador_id
+3. Display referrer_name in the "Referred By" column on the leads table UI
+
+---
+
+CHANGE 2 — ADD referrer_name COLUMN TO DB
+
+ALTER TABLE ambassadors ADD COLUMN IF NOT EXISTS referrer_name TEXT;
+
+This stores the plain-text referrer name directly from the GA API response so we can display it without needing a join.
+
+---
+
+CHANGE 3 — ADD journey_status COLUMN AND SYNC IT
+
+The GA API returns a "Professionals User Journey" status per contact (values: Onboarding, Approved, Active, Disengaged, Declined Service, Unqualified Eligible, Unqualified Ineligible). This is the closest thing to an approval status.
+
+Add column: ALTER TABLE ambassadors ADD COLUMN IF NOT EXISTS journey_status TEXT;
+
+Update the sync to read the journey status from the GA API response and write it to journey_status. Find the exact field name by inspecting the raw API response.
+
+Display journey_status in the "Approved At" column on the leads table (or add a dedicated "Status" column). When journey_status = 'Approved' or 'Active', that is the approved state.
+
+---
+
+CHANGE 4 — UPDATE THE LEADS TABLE UI
+
+The leads table should display these columns, all sourced automatically from the DB (no manual input ever):
+1. First Name
+2. Last Name  
+3. Email
+4. Created At (from GA "joined" / created_at field)
+5. Referred By (from referrer_name column)
+6. Status / Journey (from journey_status column)
+7. Job Title (from job_title column — will populate when custom6 gets data)
+8. Shifts Worked (from shifts_count — will populate when custom5 gets data)
+
+Remove the footer message that says "GA API does not provide this data." Replace it with nothing or with: "Synced from GetAmbassador"
+
+---
+
+CHANGE 5 — RUN FULL SYNC AFTER ALL CHANGES
+
+After all code and DB changes are done:
+1. Run a full sync
+2. Query: SELECT first_name, last_name, email, created_at, referrer_name, referrer_ambassador_id, journey_status FROM ambassadors WHERE status = 'prospect' LIMIT 10;
+3. Report the exact results so I can confirm referrer_name and journey_status are populated
+
+---
+
+Do all 5 changes now in order. The most important one is Change 1 — find the exact referrer field name in the GA API JSON and wire it up. Do not stop between steps.

@@ -1,0 +1,80 @@
+Make all of the following changes exactly as specified. Do not skip any step. Do not ask for confirmation. Execute all of them in order and verify each one works before moving to the next.
+
+---
+
+CHANGE 1 — ADD referring_short_code COLUMN TO DATABASE
+
+Run this migration against the database:
+
+ALTER TABLE ambassadors ADD COLUMN IF NOT EXISTS referring_short_code VARCHAR(20);
+
+Then create an index on it:
+
+CREATE INDEX IF NOT EXISTS idx_ambassadors_referring_short_code ON ambassadors(referring_short_code);
+
+Verify the column exists by querying: SELECT column_name FROM information_schema.columns WHERE table_name='ambassadors' AND column_name='referring_short_code';
+
+---
+
+CHANGE 2 — UPDATE THE SYNC ENGINE TO PERSIST referring_short_code
+
+In the sync engine file (sync-engine.ts or similar), find the upsert block where ambassador/prospect records are written to the database. Make sure the upsert writes the raw custom8 value into the referring_short_code column on every record — not just tracking it in memory. It must be persisted to the DB row so it survives across sync runs.
+
+Specifically: when normalizeAmbassador() extracts custom8 as referringShortCode, that value must be written to the ambassadors.referring_short_code column in the INSERT and UPDATE (upsert) SQL — not just held in a Map.
+
+---
+
+CHANGE 3 — ADD A STANDALONE REFERRAL RESOLUTION ENDPOINT
+
+Add a new API endpoint: POST /api/sync/resolve-referrers
+
+This endpoint must:
+1. Query all rows in ambassadors where referring_short_code IS NOT NULL and referrer_ambassador_id IS NULL
+2. For each row, look up the ambassador whose short_code matches that referring_short_code
+3. If a match is found, write that ambassador's id into referrer_ambassador_id on the prospect record
+4. Return a JSON response with: { resolved: number, unresolved: number, errors: string[] }
+
+This endpoint must be callable independently — it should NOT require a full sync to run. It should be usable any time new short_code data appears in the DB.
+
+---
+
+CHANGE 4 — UPDATE resolveShortCodeReferrers() TO ALSO HANDLE EXISTING UNRESOLVED ROWS
+
+The current resolveShortCodeReferrers() function only resolves records that were processed in the current sync run (using an in-memory Map). Update it so that after processing the in-memory batch, it ALSO runs a DB-level resolution pass:
+
+UPDATE ambassadors AS prospect
+SET referrer_ambassador_id = advocate.id
+FROM ambassadors AS advocate
+WHERE prospect.referring_short_code = advocate.short_code
+  AND prospect.referrer_ambassador_id IS NULL
+  AND prospect.referring_short_code IS NOT NULL;
+
+This ensures any previously synced records that had referring_short_code populated but no referrer_ambassador_id get resolved on every sync run.
+
+---
+
+CHANGE 5 — START THE APP
+
+Start the app server so it is running and the preview works. Make sure there are no port conflicts. Verify the server starts successfully and the /api/health or equivalent endpoint responds with 200.
+
+---
+
+CHANGE 6 — RUN A FULL SYNC AFTER ALL CODE CHANGES
+
+After all the above changes are deployed and the server is running, trigger a full sync via the sync endpoint. Then run the following SQL to verify the state of the data:
+
+SELECT 
+  COUNT(*) as total_records,
+  COUNT(referring_short_code) as has_referring_short_code,
+  COUNT(referrer_ambassador_id) as has_referrer_resolved,
+  COUNT(approved_at) as has_approved_at,
+  COUNT(job_title) as has_job_title,
+  COUNT(shifts_count) as has_shifts
+FROM ambassadors
+WHERE contact_type = 'prospect' OR contact_type IS NULL;
+
+Report back the exact numbers from that query so I can confirm the pipeline is working.
+
+---
+
+Do all 6 changes now. Do not stop between steps.

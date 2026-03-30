@@ -1,0 +1,35 @@
+I want to audit and fix how the app stores and displays GA data, modeled after a proven Google Sheets architecture. Here is the exact data model we need to replicate in this app's database:
+
+## SOURCE OF TRUTH: How the GA API data is structured
+
+The GA API endpoint `GET /ambassador/all/` (paginated, max 100/page) returns ALL contacts — both top-level ambassadors AND their referrals — in a single flat list. Every contact has these fields:
+
+- id, first_name, last_name, email, is_active (1/0), group_name, created_at
+- short_code_url (the full refer.joinkwikly.com/XXXX URL)
+- uid (custom UID, often null)
+- custom1 through custom10
+- earned, balance, awaiting_approval, awaiting_fulfillment, fulfilled (dollar amounts)
+- referrals (count), shares (count), last_share (date), last_login (date)
+- email_delivery_status, campaign_name
+- referred_by (THIS IS THE KEY FIELD — contains the email or UID of the ambassador who referred them; blank/null for top-level ambassadors)
+
+## The separation logic
+- A contact is a TOP-LEVEL AMBASSADOR if: referred_by is blank, null, 'null', 'undefined', or '0'
+- A contact is a REFERRAL/LEAD if: referred_by has a real value
+- To match a referral to its ambassador: referral.referred_by === ambassador.uid OR referral.referred_by === ambassador.email
+
+## What I need you to do:
+
+1. **Audit the current DB schema** — check what fields are actually being stored per contact/prospect record. Specifically confirm: are `earned`, `balance`, `referrals`, `shares`, `last_share`, `last_login`, `referred_by`, `group_name`, `campaign_name`, and `short_code_url` all being stored?
+
+2. **Fix the sync engine** — ensure ALL fields listed above are fetched from the GA API and stored in the DB for every contact. If any are missing from the sync, add them.
+
+3. **Fix the ambassador–lead association** — each lead/prospect record must have their `referred_by` value stored, and it must correctly match back to the ambassador via uid OR email comparison.
+
+4. **Update the Ambassador detail page** — when viewing an individual ambassador, show:
+   - Their own stats: short_code, status, group_name, campaign_name, earned, balance, referrals count, shares count, last_share, last_login
+   - A table of ALL leads/prospects referred by them, each showing: name, email, status, created_at (when they enrolled), last_login
+
+5. **Update the Leads list page** — ensure the "Referred By" column correctly shows the referring ambassador's name (not just an ID or blank). Join through the referred_by field → ambassador email/uid match.
+
+Please audit the DB first, show me what's there vs what's missing, fix the sync, re-sync data, then update the UI views. Do not change the overall app layout or navigation — only fix the data layer and the two views described above.

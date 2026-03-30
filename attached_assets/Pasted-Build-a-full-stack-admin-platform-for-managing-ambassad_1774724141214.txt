@@ -1,0 +1,369 @@
+Build a full-stack admin platform for managing ambassador referral dashboards.
+
+Project goal:
+Create an admin-only web application that syncs ambassador and referral performance data from GetAmbassador, stores it in the Replit database, and generates unique iframe dashboard links for each ambassador. Ambassadors will not log into this platform directly. Only internal admins will log in to manage integrations, review synced ambassador records, and access the generated iframe links used inside GetAmbassador.
+
+Core business context:
+- GetAmbassador is the source of truth for ambassador and referral dashboard data
+- HubSpot feeds data into GetAmbassador via webhook, but this app should treat GetAmbassador as the source of truth
+- Ambassadors refer two lead types:
+  1. Professional / temp worker leads
+  2. Company / office leads
+- Attribution is based on the ambassador short code
+- Each ambassador needs a unique dashboard link that will be embedded as an iframe inside GetAmbassador
+- Ambassadors will never log into this admin platform
+- Only internal admins need access to this application
+- The system must automatically create synced ambassador dashboard records whenever a new ambassador is created in GetAmbassador
+
+Platform requirements:
+This is an admin-only operations platform, not a multi-user customer app.
+
+Admins need to be able to:
+- log into the admin platform
+- manage GetAmbassador connection settings
+- view sync status
+- manually trigger sync jobs
+- see all synced ambassadors
+- click into an ambassador record
+- view the ambassador’s generated iframe dashboard link
+- copy the iframe dashboard link for placement into GetAmbassador
+- see whether an ambassador dashboard account has been auto-created successfully
+
+System behavior:
+- Whenever a new ambassador is detected from GetAmbassador, automatically create a synced ambassador account record in the platform database
+- Automatically generate:
+  - dashboard slug
+  - secure dashboard token
+  - full iframe URL
+- Persist all ambassador dashboard metadata in the database
+- Maintain sync status and timestamps for each ambassador record
+
+Technical stack:
+- Build this for Replit
+- Use Replit’s database as the main persistence layer
+- Use a modern JavaScript or TypeScript full-stack architecture
+- Preferred stack:
+  - Frontend: React
+  - Backend: Node.js + Express
+  - Styling: Tailwind CSS
+- Organize the project clearly for future expansion
+- Use environment variables for secrets and API credentials
+
+Authentication requirements:
+- Admin-only authentication
+- Do not build ambassador login
+- Only a small number of internal admins should be able to access the platform
+- Implement a simple and secure admin auth system suitable for internal use
+- Support login via email/password stored securely, or a lightweight admin auth pattern appropriate for Replit
+- Protect all admin pages and admin API routes
+- The public iframe dashboard route should not require admin login, but must require a secure per-ambassador token
+
+Primary app features:
+
+1. Admin authentication
+- Login page for admins
+- Protected admin session
+- Logout functionality
+- Route protection middleware
+
+2. Integration settings page
+Admins can view and manage:
+- GetAmbassador API base URL
+- GetAmbassador username
+- GetAmbassador API token status
+- App base URL
+- Sync settings
+- Last sync timestamps
+- Connection test status
+
+3. Ambassador sync engine
+- Pull ambassadors from GetAmbassador
+- Pull referral/performance data from GetAmbassador
+- Normalize and store data in the Replit database
+- Auto-create ambassador dashboard records for new ambassadors
+- Upsert existing ambassador records safely
+- Support manual sync from admin UI
+- Structure code so scheduled syncs can be added later
+
+4. Admin ambassador list page
+Display a table of synced ambassadors with:
+- ambassador name
+- email
+- short code
+- GetAmbassador UID
+- status
+- dashboard account created status
+- last synced timestamp
+- iframe dashboard URL
+- copy link action
+- view details action
+
+5. Admin ambassador detail page
+Display:
+- ambassador profile info
+- short code
+- GetAmbassador UID
+- dashboard slug
+- dashboard token status
+- full iframe URL
+- last sync timestamp
+- summary referral metrics
+- sync/debug information
+
+6. Public iframe dashboard
+Route format:
+- /dashboard/:shortCode?token=...
+This route is not for admin use only; it is the ambassador-specific dashboard embedded inside GetAmbassador
+Requirements:
+- validate short code + token
+- return unauthorized if invalid
+- be iframe-friendly
+- show only that ambassador’s data
+
+7. Dashboard content
+Header:
+- Ambassador full name
+- Short code
+- Last synced timestamp
+
+Summary KPI cards:
+- Total Referrals
+- Professional Referrals
+- Company Referrals
+- Approved Referrals
+- Total Professional Shifts Worked
+- Total Company Shifts Filled
+
+Detailed sections:
+A. Professional referrals table
+Columns:
+- First Name
+- Last Name
+- Email
+- Job Title
+- Date Created
+- Date Approved
+- Number of Shifts Worked
+
+B. Company referrals table
+Columns:
+- Company Name
+- First Name
+- Last Name
+- Email
+- Date Created
+- Date Approved
+- Total Shifts Worked
+- Associated Office ID
+
+Database requirements:
+Use Replit database for persistence. Design a clean data access layer even if Replit DB is key-value based.
+
+Create logical models/collections for:
+
+1. AdminUser
+Fields:
+- id
+- email
+- passwordHash
+- role
+- isActive
+- createdAt
+- updatedAt
+
+2. Ambassador
+Fields:
+- id
+- getAmbassadorUid
+- email
+- firstName
+- lastName
+- shortCode
+- status
+- company
+- dashboardSlug
+- dashboardToken
+- iframeUrl
+- dashboardAccountCreated
+- lastSyncedAt
+- createdAt
+- updatedAt
+
+3. Referral
+Fields:
+- id
+- ambassadorId
+- sourceType (enum: PROFESSIONAL, COMPANY)
+- sourceRecordId
+- campaignUid
+- orderId
+- transactionUid
+- email
+- firstName
+- lastName
+- companyName
+- jobTitle
+- associatedOfficeId
+- approvedAt
+- createdAtSource
+- status
+- numberShiftsWorked
+- totalShiftsWorked
+- rawCustom1
+- rawCustom2
+- rawCustom3
+- rawCustom4
+- rawCustom5
+- rawCustom6
+- rawCustom7
+- rawCustom8
+- rawCustom9
+- rawCustom10
+- createdAt
+- updatedAt
+
+4. SyncJob
+Fields:
+- id
+- jobType
+- status
+- recordsProcessed
+- recordsFailed
+- errorLog
+- startedAt
+- completedAt
+- createdAt
+- updatedAt
+
+5. AppSetting
+Fields:
+- key
+- value
+- updatedAt
+
+6. RawApiPayload
+Fields:
+- id
+- sourceEndpoint
+- sourceRecordId
+- payloadJson
+- fetchedAt
+- processedAt
+- createdAt
+
+Business mapping configuration:
+Create a config file that maps GetAmbassador custom fields into business meanings:
+- custom1 = companyName
+- custom2 = totalShiftsWorked
+- custom3 = phoneNumber
+- custom4 = approvedAt
+- custom5 = numberShiftsWorked
+- custom6 = jobTitleOrReferralType
+- custom9 = fvidOrDashboardId
+- custom10 = associatedOfficeId
+
+Referral classification logic:
+- PROFESSIONAL when the record reflects professional/job-title-based referral logic such as dental hygienist or dental assistant, or when job title exists and office identifiers are absent
+- COMPANY when companyName and/or associatedOfficeId and/or totalShiftsWorked is present
+- Implement classification in a dedicated utility function so it can be adjusted later
+
+GetAmbassador integration layer:
+Create a clean service module with methods such as:
+- getAllAmbassadors(page?)
+- getAmbassadorByEmailOrUid(...)
+- getAmbassadorStats(...)
+- getCommissions(...)
+- getShortcode(...)
+- normalizeAmbassador(...)
+- normalizeReferral(...)
+
+Even if live API credentials are not available, create the full service structure with mockable fetch functions and clear TODO comments for endpoint wiring.
+
+Auto-creation requirements:
+When a new ambassador is synced from GetAmbassador:
+- automatically create a corresponding Ambassador record in the platform database
+- automatically generate a dashboard slug
+- automatically generate a secure dashboard token
+- automatically generate the iframe URL
+- mark dashboardAccountCreated = true
+- make the iframe URL visible in the admin UI
+
+Admin UI requirements:
+Admin navigation should include:
+- Dashboard
+- Ambassadors
+- Sync Jobs
+- Settings
+
+Admin dashboard page should show:
+- total ambassadors
+- total active ambassadors
+- total referrals synced
+- last sync run
+- sync health summary
+
+Ambassador list page should support:
+- search by name, email, or short code
+- filter by status
+- copy iframe URL button
+- open detail view
+
+Ambassador detail page should support:
+- summary metrics
+- copy iframe URL
+- view generated dashboard URL
+- see raw sync status
+- trigger re-sync for that ambassador later if desired
+
+Security requirements:
+- Admin routes require admin authentication
+- Iframe dashboard route requires short code + secure token
+- Short code alone is never enough for access
+- Store passwords securely using hashing
+- Use secure session handling
+- Keep auth implementation simple but real
+
+Developer requirements:
+- Build a clean MVP, not a toy
+- Organize code by route, service, model, and utility
+- Add comments where business logic matters
+- Include mock data / seeding so the app runs without live API access
+- Include a README with:
+  - setup instructions for Replit
+  - environment variables needed
+  - admin login setup
+  - where to configure GetAmbassador credentials
+  - how sync works
+  - how new ambassadors are auto-created
+  - how iframe URLs are generated
+  - how dashboard token validation works
+
+Environment variables:
+- SESSION_SECRET
+- GETAMBASSADOR_API_BASE_URL
+- GETAMBASSADOR_USERNAME
+- GETAMBASSADOR_API_TOKEN
+- APP_BASE_URL
+- ADMIN_BOOTSTRAP_EMAIL
+- ADMIN_BOOTSTRAP_PASSWORD
+
+Please generate:
+1. Full project structure
+2. Replit-compatible backend and frontend setup
+3. Replit database data access layer
+4. Admin authentication system
+5. GetAmbassador service layer
+6. Sync logic
+7. Auto-create ambassador dashboard account logic
+8. Admin pages
+9. Public iframe dashboard route
+10. Mock seed data
+11. README
+12. Clear TODO markers where live GetAmbassador response mapping must be finalized
+
+Important:
+- Do not build ambassador login
+- This is an admin-only platform plus public tokenized iframe dashboard views
+- The admin must be able to log in and view all synced ambassadors and their iframe links
+- The system must auto-create synced ambassador dashboard records whenever a new ambassador is created
+- Keep the architecture maintainable and ready for expansion

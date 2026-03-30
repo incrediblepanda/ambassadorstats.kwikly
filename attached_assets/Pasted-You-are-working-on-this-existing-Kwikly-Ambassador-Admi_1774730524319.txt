@@ -1,0 +1,263 @@
+You are working on this existing Kwikly Ambassador Admin platform. I have done a full QA audit and identified every broken, missing, and incorrect thing. Your job is to fix ALL of it in one focused pass. Do not scaffold new files unless required. Do not change what is already working. Work through each issue in the order listed below.
+
+==================================================
+CONTEXT: WHAT THIS APP IS SUPPOSED TO DO
+==================================================
+
+This is an admin-only platform that:
+- Syncs live ambassador and referral data from GetAmbassador (source of truth)
+- Auto-creates internal ambassador records whenever a new ambassador is found in GetAmbassador
+- Generates a unique secure iframe dashboard URL for each ambassador
+- Allows admins to view synced ambassadors, inspect sync status, copy iframe links, and review referral metrics
+- Serves a public iframe dashboard at /dashboard/:shortCode?token=... that displays a single ambassador's data (no admin chrome)
+
+Ambassadors DO NOT log into this platform. This is admin-only plus public iframe.
+
+GetAmbassador terminology:
+- Ambassadors = Advocates in GetAmbassador contacts
+- Referrals = Prospects in GetAmbassador contacts
+
+==================================================
+VERIFIED FACTS FROM THE QA AUDIT
+==================================================
+
+Here is exactly what is wrong, confirmed by direct database inspection and live testing:
+
+1. CURRENT DATABASE STATE:
+   - ambassadors table: 5 rows of seeded fake data (amb-001 through amb-005, @example.com emails, fake names like Sarah Johnson)
+   - referrals table: 10 rows of seeded fake data (@example.com emails, fake job titles)
+   - raw_api_payloads table: 0 rows — no real API data has EVER been stored
+   - sync_jobs table: 10 rows — all recent jobs (5 through 10) completed with 0 records synced
+   - app_settings: syncEnabled = "false", connectionStatus = "failed", appBaseUrl = "" (empty)
+
+2. THE ACTUAL API ERROR (from sync_jobs error_log):
+   "Failed to fetch ambassadors page 1: GetAmbassador API returned 404: Not Found — <!DOCTYPE html>..."
+   
+   The URL being called: https://api.getambassador.com/api/v2/kwikly/[TOKEN]/json/ambassadors/?page=1&limit=1
+   
+   The endpoint segment "ambassadors" is WRONG. The GetAmbassador Backend API v2 uses different endpoint names. You must look up and test the correct endpoint. Based on the GetAmbassador Backend API v2 documentation, the correct patterns are:
+   - Advocates/Ambassadors list: ambassador/all  (not "ambassadors")
+   - Single ambassador: ambassador/get/{uid}
+   - Commissions/referrals for an ambassador: commission/all (filtered by ambassador UID or similar)
+   - Short codes: shortcode/get
+   
+   The full URL pattern (which IS correct): {baseUrl}/{username}/{token}/json/{endpoint}/
+   Example: https://api.getambassador.com/api/v2/kwikly/ccadfefdbc64b121ffcd7a0c42c3258e/json/ambassador/all/?page=1&limit=100
+
+3. CREDENTIALS STORED IN app_settings (confirmed by DB query):
+   - getAmbassadorUsername = "kwikly"
+   - getAmbassadorApiToken = "ccadfefdbc64b121ffcd7a0c42c3258e"
+   - getAmbassadorApiBaseUrl = "https://api.getambassador.com/api/v2"
+   - syncEnabled = "false"
+   - connectionStatus = "failed"
+   - appBaseUrl = "" (empty — must be set to the app's deployed URL)
+
+4. PUBLIC IFRAME DASHBOARD: The route /dashboard/:shortCode does not exist in the frontend React router. Navigating to /dashboard/SARAH-J?token=... returns a React 404 page. The route and page component are missing entirely.
+
+5. FALSE HEALTH STATUS: The admin dashboard shows "Sync Health: Healthy / All systems operational" even though connectionStatus = "failed" and every sync returns 0 records. This is misleading and must be corrected.
+
+6. SYNC ENABLED IS OFF: syncEnabled is "false" so scheduled syncs never run automatically.
+
+7. REAL GETAMBASSADOR DATA (what we need to sync):
+   - 13 real advocates (ambassadors) exist in GetAmbassador
+   - 97 real prospects (referrals) exist in GetAmbassador across 4 pages
+   - Real short codes look like "7gfqTG", "7gfqSN", "7g3Lnr" (from refer.joinkwikly.com referral links)
+   - Real ambassador UIDs are numeric (e.g., 182451245)
+   - None of these exist in the current database
+
+==================================================
+TASK 1 — FIX THE API CLIENT ENDPOINT NAMES
+==================================================
+
+File: artifacts/api-server/src/services/getambassador.ts (or wherever the API client lives)
+
+Fix the endpoint names used when building URLs. The correct GetAmbassador Backend API v2 endpoint names are:
+
+- To get all ambassadors (advocates): ambassador/all
+  Full URL: {baseUrl}/{username}/{token}/json/ambassador/all/?page=1&limit=100
+
+- To get a single ambassador by UID: ambassador/get/{uid}
+  Full URL: {baseUrl}/{username}/{token}/json/ambassador/get/{uid}/
+
+- To get all referrals/commissions for all ambassadors: commission/all
+  Full URL: {baseUrl}/{username}/{token}/json/commission/all/?page=1&limit=100
+
+- To get commissions for a specific ambassador: commission/ambassador/{uid}
+  Full URL: {baseUrl}/{username}/{token}/json/commission/ambassador/{uid}/?page=1&limit=100
+
+- To get short code info: shortcode/get/{shortcode}
+  Full URL: {baseUrl}/{username}/{token}/json/shortcode/get/{shortcode}/
+
+IMPORTANT: If these exact endpoint names still return 404, try these alternatives and use whichever returns 200 with JSON:
+  - ambassador/all → try: ambassador, ambassadors
+  - commission/all → try: commissions, referral/all
+  - Test using the testConnection() function which already logs the URL and response
+
+After fixing, run testConnection() to confirm you get a 200 with JSON (not HTML).
+
+==================================================
+TASK 2 — FIX THE SYNC ENGINE TO USE REAL DATA
+==================================================
+
+File: wherever sync-engine.ts or the sync orchestrator lives
+
+Current broken behavior:
+- It tries to fetch "ambassadors" endpoint (wrong)
+- It iterates over fake amb-001 through amb-005 UIDs when fetching referrals
+- It marks jobs as COMPLETED even when 0 records are synced and errors occurred
+- It does not clear/replace old seeded records
+
+Required behavior after fix:
+
+A. AMBASSADOR SYNC:
+   1. Call ambassador/all with pagination until all pages are fetched
+   2. For each advocate returned:
+      - Upsert into ambassadors table using GetAmbassador UID as the unique key (get_ambassador_uid)
+      - Fields to map: uid, email, first_name, last_name, status (active/inactive based on GetAmbassador status), short_code (from the advocate's short code or referral link)
+      - If this is a new ambassador not previously seen, auto-generate:
+        * dashboard_slug (use the short code from GetAmbassador)
+        * dashboard_token (secure random hex, 64 chars)
+        * iframe_url (constructed as: {APP_BASE_URL}/dashboard/{short_code}?token={dashboard_token})
+        * Set dashboardAccountCreated = true
+      - If ambassador already exists, update their fields but preserve the existing dashboard_token and iframe_url
+   3. Record count of ambassadors upserted
+
+B. REFERRAL/COMMISSION SYNC:
+   1. Call commission/all (or the correct commissions endpoint) with pagination
+   2. For each commission/referral returned:
+      - Identify the associated ambassador UID
+      - Map the prospect data:
+        * First look at custom fields: custom1=companyName, custom2=totalShiftsWorked, custom3=phoneNumber, custom4=approvedAt, custom5=numberShiftsWorked, custom6=jobTitleOrReferralType, custom9=fvidOrDashboardId, custom10=associatedOfficeId
+        * Classify as PROFESSIONAL if: custom6 has job title content AND custom1 (companyName) is empty AND custom10 (associatedOfficeId) is empty
+        * Classify as COMPANY if: custom1 (companyName) is present OR custom10 (associatedOfficeId) is present OR custom2 (totalShiftsWorked) is present
+        * If unclear, default to PROFESSIONAL
+      - Upsert into referrals table using GetAmbassador prospect UID as unique key
+      - Fields to store: ambassador_id (FK to ambassadors), type (PROFESSIONAL|COMPANY), first_name, last_name, email, job_title (from custom6), company_name (from custom1), phone_number (from custom3), approved_at (from custom4), number_shifts_worked (from custom5, integer), total_shifts_worked (from custom2, integer), associated_office_id (from custom10), fvid_or_dashboard_id (from custom9), status (approved/pending/etc), created_at
+   3. Store the raw API payload in raw_api_payloads table for each API call made
+
+C. SYNC JOB STATUS:
+   - If any errors occurred AND records_processed = 0, mark status as FAILED (not COMPLETED)
+   - If some records synced but errors also occurred, mark status as PARTIAL
+   - Only mark COMPLETED if records were actually processed without critical errors
+   - Always write the full error_log regardless of status
+
+D. AFTER SYNC:
+   - Update app_settings: connectionStatus = "connected", lastSyncAt = now
+   - Update syncEnabled to remain as-is (don't change it)
+
+==================================================
+TASK 3 — CLEAR SEEDED DATA AND RE-SYNC
+==================================================
+
+After fixing the sync engine:
+
+1. Delete all rows from the referrals table
+2. Delete all rows from the ambassadors table
+3. Delete all rows from the raw_api_payloads table
+4. Update sync_jobs — leave historical records but they are now historical context only
+5. Trigger a full sync immediately to populate real data
+6. Verify: ambassadors table should have 13 rows with real @joinkwikly.com / real email addresses
+7. Verify: referrals table should have ~97 rows matching real GetAmbassador prospects
+8. Verify: raw_api_payloads table should have rows with actual JSON responses
+
+DO NOT re-run the seeder. Delete the seeder or ensure it only runs if the ambassadors table is empty AND no real ambassador UIDs have been stored.
+
+==================================================
+TASK 4 — SET APP_BASE_URL AND syncEnabled
+==================================================
+
+1. In app_settings, set appBaseUrl to the correct deployed URL of this app.
+   The current dev URL is: https://e0ace5df-cffd-4e18-9f8c-34f160ede27e-00-2dcgud7bc4hxh.worf.replit.dev
+   
+   Set this in the settings route and/or as a fallback in the code:
+   - Check for APP_BASE_URL environment variable first
+   - Fall back to app_settings appBaseUrl value
+   - If both empty, use the request origin as a fallback during iframe URL generation
+
+2. Set syncEnabled = "true" in app_settings so that scheduled syncs run automatically.
+
+3. Regenerate iframe_url for all ambassadors after appBaseUrl is set, so the URLs actually work.
+
+==================================================
+TASK 5 — BUILD THE PUBLIC IFRAME DASHBOARD ROUTE
+==================================================
+
+This is currently completely missing. The route /dashboard/:shortCode?token=... returns a React 404.
+
+A. BACKEND API ENDPOINT:
+Create a public (no admin auth required) API route:
+GET /api/public/dashboard/:shortCode?token=...
+
+This endpoint must:
+1. Look up the ambassador in the database by short_code = :shortCode
+2. If not found, return 404
+3. Validate that the token query parameter matches the ambassador's stored dashboard_token
+4. If token does not match, return 401 { error: "Unauthorized" }
+5. If valid, return JSON:
+   {
+     ambassador: {
+       firstName, lastName, email, shortCode, status
+     },
+     metrics: {
+       totalReferrals, approved, professionals, companies, profShiftsWorked, compShiftsWorked
+     },
+     professionalReferrals: [
+       { firstName, lastName, email, jobTitle, status, numberShiftsWorked, createdAt, approvedAt }
+     ],
+     companyReferrals: [
+       { companyName, firstName, lastName, email, status, totalShiftsWorked, associatedOfficeId, createdAt, approvedAt }
+     ]
+   }
+
+B. FRONTEND ROUTE:
+Create a new page component: /src/pages/dashboard.tsx (or equivalent path in the admin frontend)
+
+Register the route in the React Router as a PUBLIC route (no auth required, no admin sidebar):
+   <Route path="/dashboard/:shortCode" element={<DashboardPage />} />
+
+This page must:
+1. On load, extract shortCode from URL params and token from query string
+2. Call GET /api/public/dashboard/:shortCode?token=...
+3. If 401 is returned, show an "Access Denied" screen (no admin chrome, branded, simple)
+4. If 404 is returned, show an "Ambassador not found" screen
+5. If 200, render the dashboard with:
+   - Ambassador name and status at the top
+   - KPI cards: Total Referrals, Approved, Professionals, Companies, Prof Shifts Worked, Comp Shifts Worked
+   - Tab switcher: Professional Referrals | Company Referrals
+   - Professional Referrals table: First Name, Last Name, Email, Job Title, Status, Shifts Worked, Approved At
+   - Company Referrals table: Company Name, First Name, Last Name, Email, Status, Total Shifts, Office ID, Approved At
+   - No admin sidebar
+   - No admin navigation
+   - No login link
+   - Use Kwikly brand colors (coral #e84a67, navy #00345e, Montserrat font)
+   - Keep it minimal and embeddable — this will be loaded inside an iframe
+
+C. SECURITY:
+   - Short code alone must NOT be enough to access the dashboard
+   - Token must always be validated
+   - The token should never be exposed in the rendered HTML beyond the URL already containing it
+
+==================================================
+TASK 6 — FIX THE FALSE HEALTH STATUS ON DASHBOARD
+==================================================
+
+File: wherever the admin Dashboard page fetches and displays Integration Health / Sync Health
+
+Current wrong behavior:
+- Shows "Sync Health: Healthy / All systems operational" even when connectionStatus = "failed"
+- Shows "GetAmbassador API is syncing normally" even when every sync returns 0 records
+
+Required behavior:
+- Read connectionStatus from app_settings (or from the last sync job result)
+- If connectionStatus = "failed" or last sync had 0 records synced AND had error_log entries: show a red/warning state — "Sync Error" or "Integration Unhealthy" with the error message
+- If connectionStatus = "connected" and last sync had records > 0: show green "Healthy"
+- If connectionStatus = "connected" but last sync had 0 records (all ambassadors already up to date): show neutral "Up to date / No changes"
+- Never hardcode "Healthy" — always derive it from real data
+
+Also fix the sync_jobs page status labels:
+- If records_processed = 0 AND error_log is not empty: show status as FAILED (not COMPLETED)
+- If records_processed > 0 AND error_log is not empty: show status as PARTIAL
+- Only show COMPLETED if records_processed > 0 and no errors
+
+==================================================
+TASK

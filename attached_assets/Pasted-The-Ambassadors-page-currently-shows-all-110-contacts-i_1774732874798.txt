@@ -1,0 +1,35 @@
+The Ambassadors page currently shows all 110 contacts in one mixed table — but GetAmbassador separates contacts into two distinct types: "advocates" (our ambassadors) and "prospects" (leads referred by those ambassadors). These need to be split into two separate pages/sections.
+
+Here is what I confirmed from the GetAmbassador UI:
+- The ambassador/all API endpoint returns ALL contacts (advocates + prospects combined), each with a `status` field: "enrolled" maps to active advocate, "prospect" maps to prospect/lead
+- Prospect records have a `referrer` field (or similar) that links back to the ambassador who referred them — in the GA UI this is shown as "REFERRER: [Ambassador Name]"
+- The raw_api_payloads table already has this data from our last sync
+
+**What needs to be built:**
+
+1. **Inspect the raw API payload** first — query raw_api_payloads for endpoint `ambassador/all` and look at the full JSON structure of a record where status is `prospect`. Identify exactly what field stores the referring ambassador (likely `referrer`, `referred_by`, `ambassador_email`, or a nested object). Document the exact field name before writing any code.
+
+2. **DB schema changes** — Add a `prospects` table (or rename the concept) that stores:
+   - `id`, `fullName`, `email`, `shortCode` (if any), `status`, `referrerAmbassadorId` (FK to ambassadors table), `referrerEmail`, `referrerName`, `lastSyncedAt`
+   OR alternatively: keep one `ambassadors` table but add a `type` column (`advocate` | `prospect`) and a `referredBy` FK column pointing to another ambassador row.
+   Choose whichever approach is cleaner given the existing schema.
+
+3. **Sync engine changes** — During `syncAmbassadors`, split records by type:
+   - Records with status = "enrolled" (or "active") → store as advocates
+   - Records with status = "prospect" → store as prospects, and resolve + store their referring ambassador FK
+
+4. **API routes** — Create or update backend routes:
+   - `GET /api/ambassadors` → returns only advocates (type = advocate)
+   - `GET /api/prospects` → returns all prospects with their referring ambassador info (name, email, shortCode) joined
+   - `GET /api/ambassadors/:id/prospects` → returns prospects referred by a specific ambassador
+
+5. **Admin UI — Navigation & Pages:**
+   - Rename the current "Ambassadors" nav item to "Advocates" (or keep as Ambassadors — your call based on what makes sense for the Kwikly brand)
+   - Add a new nav item "Leads" that shows the prospects table
+   - The Leads page should have columns: Name, Email, Status, Referred By (ambassador name + short code), Date Joined, Actions
+   - The Advocates page should show their lead count (how many prospects they referred) as a new column
+   - On the Advocate detail/view page (if one exists), show a "Leads" sub-table of prospects they referred
+
+6. **Counts on Dashboard** — Update the admin dashboard stats to show separate counts: Total Advocates + Total Leads (prospects)
+
+Before writing any code, read the raw_api_payloads to confirm the exact JSON field for the referrer. Then plan the DB migration and proceed.

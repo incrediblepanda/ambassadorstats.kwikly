@@ -1,0 +1,19 @@
+Update the Leads table to show these exact columns: First Name | Last Name | Email | Job Title | Referred By | Created At | Approved At | Number of Shifts Worked | Total Shifts Worked
+
+Here is how to source each field:
+
+1. First Name, Last Name — split from the existing contact record (first_name, last_name fields already in DB)
+2. Email — already in DB
+3. Job Title — check if the GA API returns a job_title or title field on prospect records. Also check custom1 through custom10 fields — one of them may map to job title. Show whatever is there; if empty show "—"
+4. Referred By — GA API confirmed does NOT return referred_by. However, look at this workaround: the GA API endpoint GET /ambassador/all/ returns all contacts. For prospects, check if any field (custom1-custom10, uid, or any other field) contains the referring ambassador's email or name. Also check if there is a separate GA API endpoint like /referrals/ or /referral-attribution/ that returns referral relationships. Test these endpoints live and implement whatever works. If truly nothing works, show "—" but document exactly what was tried.
+5. Created At — use enrolled_at field already in DB
+6. Approved At — check GA API custom fields (custom1-custom10) for an approval date. Also check if there is a status change date or journey step date in the GA API. If not available from GA, add a nullable approved_at column to the DB that can be manually set or populated later.
+7. Number of Shifts Worked — this is Kwikly operational data not in GA. Add a nullable shifts_count integer column to the DB. For now populate with null/"—". Document this as requiring a future integration with Kwikly's internal system.
+8. Total Shifts Worked — same as above. Add nullable total_shifts integer column.
+
+For the Referred By field specifically — before giving up, make these live API calls and show me the raw response:
+- GET /referral-attribution/ or /referrals/ endpoint
+- Check any contact that shows up in GA's Referral Attribution page (we know 98 leads exist there)
+- Try fetching a single prospect record by ID and dump ALL fields returned
+
+After implementing, run a sync so new fields are populated, then verify the table renders all 9 columns correctly with real data where available.
